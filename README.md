@@ -18,3 +18,47 @@ npm run dev
 - 所有个人数据接口均要求 JWT 登录态。
 - 密码使用 bcrypt 哈希保存。
 - BMI、目标进度、训练完成率均在服务端计算，前端也会在录入时实时预览 BMI。
+
+
+## systemd 服务
+
+项目已提供服务文件模板：`deploy/fitness-plan.service`。
+
+安装并启动：
+
+```bash
+sudo cp /app/fitness_plan/deploy/fitness-plan.service /etc/systemd/system/fitness-plan.service
+sudo systemctl daemon-reload
+sudo systemctl enable fitness-plan
+sudo systemctl restart fitness-plan
+sudo systemctl status fitness-plan
+```
+
+查看日志：
+
+```bash
+journalctl -u fitness-plan -f
+```
+
+## GitHub 同步
+
+仓库地址：`https://github.com/borischow0801-web/fitness_plan.git`
+
+本地已配置 remote。若当前机器没有 GitHub 凭据，可在终端完成认证后推送：
+
+```bash
+git push -u origin main
+```
+
+请勿提交 `.env` 或 `data/*.sqlite`，这些文件已在 `.gitignore` 中排除。
+
+## 公网发布建议
+
+- 将 `.env` 中的 `JWT_SECRET` 换成强随机字符串。
+- 生产环境设置 `NODE_ENV=production`。
+- 配置 `CORS_ORIGIN=https://你的域名`，多个域名用英文逗号分隔。
+- 使用 Nginx 或 Caddy 反向代理到 `127.0.0.1:9001` 或内网地址。
+- 启用 HTTPS，微信公众号菜单/文章链接建议直接使用 HTTPS 域名。
+- 保留登录/注册限流：`AUTH_RATE_LIMIT_WINDOW_MS`、`AUTH_RATE_LIMIT_MAX`。
+- 定期备份 `data/fitness.sqlite`。
+- 多用户长期公网使用建议迁移到 MySQL 或 PostgreSQL。

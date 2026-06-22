@@ -8,17 +8,58 @@ import { db, initDb, nowSql, schemaSql } from './db.js';
 import { hashPassword, requireAuth, signToken, verifyPassword } from './auth.js';
 import { bmi, bmiCategory, completionRateFromSets, goalSummary, toNumberOrNull } from './utils.js';
 
+if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'please-change-this-secret-before-production')) {
+  throw new Error('生产环境必须设置强随机 JWT_SECRET');
+}
+
 initDb();
 
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
+const corsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || corsOrigins.length === 0 || corsOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('当前来源不允许访问'));
+  }
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
 app.use(express.static('public'));
 
 const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 const ok = (res, data) => res.json({ data });
+
+function rateLimit({ windowMs, max, message }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const key = `${req.ip}:${req.path}`;
+    const now = Date.now();
+    const current = hits.get(key) || { count: 0, resetAt: now + windowMs };
+    if (current.resetAt <= now) {
+      current.count = 0;
+      current.resetAt = now + windowMs;
+    }
+    current.count += 1;
+    hits.set(key, current);
+
+    if (current.count > max) {
+      res.set('Retry-After', String(Math.ceil((current.resetAt - now) / 1000)));
+      return res.status(429).json({ message });
+    }
+    next();
+  };
+}
+
+const authLimiter = rateLimit({
+  windowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 20),
+  message: '请求过于频繁，请稍后再试'
+});
 
 function validate(schema, source = 'body') {
   return (req, res, next) => {
@@ -190,7 +231,7 @@ app.get('/api/schema.sql', (_req, res) => {
   res.type('text/plain').send(schemaSql.trim());
 });
 
-app.post('/api/auth/register', validate(registerSchema), (req, res) => {
+app.post('/api/auth/register', authLimiter, validate(registerSchema), (req, res) => {
   const { username, phone, email, password } = req.body;
   try {
     const result = db.prepare(
@@ -204,7 +245,7 @@ app.post('/api/auth/register', validate(registerSchema), (req, res) => {
   }
 });
 
-app.post('/api/auth/login', validate(loginSchema), (req, res) => {
+app.post('/api/auth/login', authLimiter, validate(loginSchema), (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE phone = ? OR email = ?').get(req.body.account, req.body.account);
   if (!user || !verifyPassword(req.body.password, user.password_hash)) {
     return res.status(401).json({ message: '账号或密码错误' });
