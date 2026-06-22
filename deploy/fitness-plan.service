@@ -1,0 +1,19 @@
+[Unit]
+Description=Fitness Plan Health Records Web App
+After=network.target
+
+[Service]
+Type=simple
+User=zxy_8581
+WorkingDirectory=/app/fitness_plan
+EnvironmentFile=/app/fitness_plan/.env
+ExecStart=/usr/bin/node /app/fitness_plan/src/server.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/app/fitness_plan/data
+
+[Install]
+WantedBy=multi-user.target
