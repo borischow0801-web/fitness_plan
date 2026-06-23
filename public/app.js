@@ -153,22 +153,65 @@ function input(name, label, value = '', type = 'text') {
 function dateTextInput(name, label, value = '') {
   return `<div class="date-field">
     <span>${label}</span>
-    <div class="date-field-row">
-      <input name="${name}" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" placeholder="YYYY-MM-DD" value="${value ?? ''}" readonly required data-open-date>
-      <button type="button" class="secondary date-pick-btn" data-open-date>选择</button>
-      <input class="date-picker-proxy" type="date" value="${value ?? ''}" aria-hidden="true" tabindex="-1">
-    </div>
+    <input name="${name}" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" placeholder="YYYY-MM-DD" value="${value ?? ''}" readonly required data-open-date>
   </div>`;
 }
 
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+function selectOptions(start, end, selected) {
+  const options = [];
+  for (let value = start; value <= end; value++) {
+    options.push(`<option value="${value}" ${Number(selected) === value ? 'selected' : ''}>${value}</option>`);
+  }
+  return options.join('');
+}
+
 function openDatePicker(target) {
-  const root = target.closest('.date-field');
-  const proxy = $('.date-picker-proxy', root);
-  const display = $('input[name=plan_date]', root);
-  if (!proxy || !display) return;
-  proxy.value = display.value || today();
-  if (typeof proxy.showPicker === 'function') proxy.showPicker();
-  else proxy.click();
+  const input = target.closest('input[name=plan_date]');
+  if (!input) return;
+  const [yearText, monthText, dayText] = (input.value || today()).split('-');
+  const year = Number(yearText) || new Date().getFullYear();
+  const month = Number(monthText) || 1;
+  const day = Number(dayText) || 1;
+  const minYear = year - 3;
+  const maxYear = year + 3;
+  const dayMax = daysInMonth(year, month);
+  const modal = document.createElement('div');
+  modal.className = 'date-modal';
+  modal.innerHTML = `<div class="date-modal-panel">
+    <div class="row"><b>选择日期</b><button type="button" class="ghost" data-date-close>取消</button></div>
+    <div class="date-select-grid">
+      <label>年<select data-date-year>${selectOptions(minYear, maxYear, year)}</select></label>
+      <label>月<select data-date-month>${selectOptions(1, 12, month)}</select></label>
+      <label>日<select data-date-day>${selectOptions(1, dayMax, Math.min(day, dayMax))}</select></label>
+    </div>
+    <button type="button" data-date-confirm>确定</button>
+  </div>`;
+  modal._targetInput = input;
+  document.body.appendChild(modal);
+}
+
+function closeDatePicker(modal) {
+  modal?.remove();
+}
+
+function refreshDatePickerDays(modal) {
+  const year = Number($('[data-date-year]', modal).value);
+  const month = Number($('[data-date-month]', modal).value);
+  const daySelect = $('[data-date-day]', modal);
+  const selected = Math.min(Number(daySelect.value), daysInMonth(year, month));
+  daySelect.innerHTML = selectOptions(1, daysInMonth(year, month), selected);
+}
+
+function confirmDatePicker(modal) {
+  const year = $('[data-date-year]', modal).value;
+  const month = String($('[data-date-month]', modal).value).padStart(2, '0');
+  const day = String($('[data-date-day]', modal).value).padStart(2, '0');
+  modal._targetInput.value = `${year}-${month}-${day}`;
+  closeDatePicker(modal);
 }
 
 function opts(map, selected) {
@@ -360,6 +403,8 @@ async function render() {
 
 document.addEventListener('click', async (e) => {
   if (e.target.closest('[data-open-date]')) { openDatePicker(e.target); return; }
+  if (e.target.closest('[data-date-close]')) { closeDatePicker(e.target.closest('.date-modal')); return; }
+  if (e.target.closest('[data-date-confirm]')) { confirmDatePicker(e.target.closest('.date-modal')); return; }
   const route = e.target.closest('[data-route]')?.dataset.route;
   if (route) return setRoute(route);
   if (e.target.id === 'logout') { localStorage.removeItem('token'); state.token = null; state.user = null; return setRoute('/login'); }
@@ -383,10 +428,8 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
-  if (e.target.classList.contains('date-picker-proxy')) {
-    const root = e.target.closest('.date-field');
-    const display = $('input[name=plan_date]', root);
-    if (display && e.target.value) display.value = e.target.value;
+  if (e.target.closest('.date-modal') && (e.target.matches('[data-date-year]') || e.target.matches('[data-date-month]'))) {
+    refreshDatePickerDays(e.target.closest('.date-modal'));
     return;
   }
   if (e.target.id === 'planType') {
