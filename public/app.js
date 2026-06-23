@@ -10,6 +10,7 @@ const today = () => {
 const state = { token: localStorage.getItem('token'), user: null, route: location.hash.replace('#', '') || '/dashboard', toast: '' };
 
 const typeMap = { strength: '重训', cardio: '有氧', core: '核心', recovery: '恢复', rest: '休息' };
+const activeTypes = ['strength', 'cardio', 'core'];
 const genderMap = { male: '男', female: '女', other: '其他' };
 
 async function api(path, options = {}) {
@@ -95,8 +96,8 @@ async function renderDashboard() {
   const g = d.latest_goal;
   return shell(`<main class="page">
     <section class="card stack">
-      <div class="row"><h2 class="title">今日 ${d.today}</h2><span class="pill">${d.today_plan ? typeMap[d.today_plan.type] : '未安排'}</span></div>
-      <div><b>${d.today_plan?.title || '今天还没有训练计划'}</b><p class="muted">${d.today_plan?.note || '可以先创建今日计划，或把今天设为休息日。'}</p></div>
+      <div class="row"><h2 class="title">今日 ${d.today}</h2><span class="pill">${d.today_plans?.length || 0} 个计划</span></div>
+      <div>${todayPlanSummary(d.today_plans || [])}</div>
       <div class="progress"><div class="bar" style="width:${d.today_completion_rate}%"></div></div>
       <div class="row"><span class="muted">今日完成率</span><b>${d.today_completion_rate}%</b></div>
       <div class="actions"><button data-route="/plan">编辑今日训练</button><button class="secondary" data-route="/checkin">去打卡</button></div>
@@ -111,6 +112,11 @@ async function renderDashboard() {
     <section class="card"><h2 class="title">最近 7 天训练</h2>${chart(d.recent_training)}</section>
     <section class="card actions"><button data-route="/health">记录体重</button><button class="secondary" data-route="/goal">设置目标</button><button class="secondary" data-route="/history">查看历史</button></section>
   </main>`);
+}
+
+function todayPlanSummary(plans) {
+  if (!plans.length) return '<b>今天还没有训练计划</b><p class="muted">可以添加中午有氧、晚上力量等多个计划。</p>';
+  return `<div class="list">${plans.map(plan => `<article class="item compact"><div class="row"><b>${plan.title}</b><span class="pill">${typeMap[plan.type]}</span></div><p class="tiny">${plan.exercises?.length || 0} 个项目 ${plan.note || ''}</p></article>`).join('')}</div>`;
 }
 
 function chart(rows) {
@@ -180,26 +186,64 @@ async function renderGoal() {
 }
 
 async function renderPlan() {
-  const plan = await api(`/api/workout-plans/date/${today()}`);
+  const editId = state.route.startsWith('/plan/edit/') ? state.route.split('/').pop() : null;
+  const plans = await api(`/api/workout-plans/date/${today()}`);
+  const edit = editId ? await api(`/api/workout-plans/${editId}`) : null;
+  const formType = edit?.type || 'strength';
   return shell(`<main class="page">
-    <form class="card stack" id="planForm" data-id="${plan?.id || ''}">
-      <h2 class="title">每日训练计划</h2>
-      <div class="grid">${input('plan_date','日期', plan?.plan_date || today(), 'date')}${input('title','训练标题', plan?.title || '', 'text')}</div>
-      <label>训练类型<select name="type">${opts(typeMap, plan?.type || 'strength')}</select></label>
-      <label>备注<textarea name="note">${plan?.note || ''}</textarea></label>
-      <h3 class="section-title">训练动作</h3>
-      <div id="exerciseList" class="list">${(plan?.exercises?.length ? plan.exercises : [blankExercise()]).map(exerciseRow).join('')}</div>
-      <button type="button" class="secondary" id="addExercise">添加动作</button>
-      <button>保存为当天计划</button>
+    <section class="card stack">
+      <div class="row"><h2 class="title">今日训练计划</h2><button class="secondary" data-route="/plan">新增计划</button></div>
+      ${planList(plans)}
+    </section>
+    <form class="card stack" id="planForm" data-id="${edit?.id || ''}">
+      <h2 class="title">${edit ? '编辑计划' : '新增计划'}</h2>
+      <div class="plan-head">${input('plan_date','日期', edit?.plan_date || today(), 'date')}${input('title','训练标题', edit?.title || '', 'text')}</div>
+      <label>训练类型<select name="type" id="planType">${opts(typeMap, formType)}</select></label>
+      <label>备注<textarea name="note">${edit?.note || ''}</textarea></label>
+      <h3 class="section-title">训练项目</h3>
+      <div id="exerciseList" class="list">${exerciseRowsForPlan(edit, formType)}</div>
+      <button type="button" class="secondary" id="addExercise" style="display:${activeTypes.includes(formType) ? '' : 'none'}">添加项目</button>
+      <button>${edit ? '保存修改' : '保存计划'}</button>
     </form>
   </main>`);
 }
 
-function blankExercise() { return { name: '', target_sets: 3, reps_per_set: 10, rest_seconds: 60, time_unit: 'seconds' }; }
+function planList(plans) {
+  if (!plans.length) return '<div class="empty">今天还没有训练计划</div>';
+  return `<div class="list">${plans.map(plan => `<article class="item compact">
+    <div class="row"><b>${plan.title}</b><span class="pill">${typeMap[plan.type]}</span></div>
+    <p class="tiny">${plan.plan_date} · ${plan.exercises?.length || 0} 个项目</p>
+    <div class="actions"><button class="secondary" data-edit-plan="${plan.id}">编辑</button><button class="danger" data-del-plan="${plan.id}">删除</button></div>
+  </article>`).join('')}</div>`;
+}
 
-function exerciseRow(e = {}) {
-  return `<article class="item exercise">
-    <div class="row"><b>动作</b><button type="button" class="danger removeExercise">删除</button></div>
+function exerciseRowsForPlan(plan, type) {
+  if (!activeTypes.includes(type)) return '<div class="empty">休息或恢复日无需添加动作，可在备注里记录安排。</div>';
+  const exercises = plan?.exercises?.length ? plan.exercises : [blankExercise(type)];
+  return exercises.map(e => exerciseRow(e, type)).join('');
+}
+
+function blankExercise(type = 'strength') {
+  if (type === 'cardio') return { name: '椭圆机', target_sets: 1, time_value: 30, time_unit: 'minutes', target_distance_km: '', target_calories: '', target_intensity: '中等' };
+  if (type === 'core') return { name: '', target_sets: 3, reps_per_set: '', time_value: 45, time_unit: 'seconds', rest_seconds: 45 };
+  return { name: '', target_sets: 3, reps_per_set: 10, rest_seconds: 60, time_unit: 'seconds' };
+}
+
+function exerciseRow(e = {}, type = 'strength') {
+  if (type === 'cardio') {
+    return `<article class="item exercise" data-kind="cardio">
+      <div class="row"><b>有氧项目</b><button type="button" class="danger removeExercise">删除</button></div>
+      <input type="hidden" name="target_sets" value="1"><input type="hidden" name="time_unit" value="minutes">
+      <div class="grid">
+        ${input('name','项目名称', e.name, 'text')}${input('time_value','目标时长 分钟', e.time_value, 'number')}
+        ${input('target_distance_km','目标距离 km', e.target_distance_km, 'number')}${input('target_calories','目标消耗 kcal', e.target_calories, 'number')}
+        ${input('target_intensity','目标强度', e.target_intensity, 'text')}${input('sort_order','排序', e.sort_order ?? 0, 'number')}
+      </div>
+      <label>项目备注<input name="note" value="${e.note || ''}"></label>
+    </article>`;
+  }
+  return `<article class="item exercise" data-kind="${type}">
+    <div class="row"><b>${type === 'core' ? '核心项目' : '力量动作'}</b><button type="button" class="danger removeExercise">删除</button></div>
     <div class="grid">
       ${input('name','动作名称', e.name, 'text')}${input('target_sets','目标组数', e.target_sets, 'number')}
       ${input('reps_per_set','每组次数', e.reps_per_set, 'number')}${input('target_weight','目标重量', e.target_weight, 'text')}
@@ -211,23 +255,39 @@ function exerciseRow(e = {}) {
 }
 
 async function renderCheckin() {
-  const plan = await api(`/api/workout-plans/date/${today()}`);
-  if (!plan) return shell(`<main class="page"><section class="card empty">今天还没有训练计划</section><button data-route="/plan">创建今日计划</button></main>`);
-  const log = await api(`/api/workout-logs/date/${today()}`);
+  const plans = await api(`/api/workout-plans/date/${today()}`);
+  if (!plans.length) return shell(`<main class="page"><section class="card empty">今天还没有训练计划</section><button data-route="/plan">创建今日计划</button></main>`);
+  const logs = await Promise.all(plans.map(plan => api(`/api/workout-logs/date/${today()}?plan_id=${plan.id}`)));
   return shell(`<main class="page">
-    <form class="card stack" id="logForm" data-plan="${plan.id}">
-      <div class="row"><h2 class="title">${plan.title}</h2><span class="pill">${typeMap[plan.type]}</span></div>
-      <div class="progress"><div class="bar" id="logBar" style="width:${log?.completion_rate || 0}%"></div></div>
-      <div class="row"><span class="muted">组数完成率</span><b id="logRate">${log?.completion_rate || 0}%</b></div>
-      ${plan.exercises.map(e => setEditor(e, log?.sets || [])).join('')}
-      <div class="grid">${input('rpe','RPE 1-10', log?.rpe, 'number')}${input('actual_duration_minutes','实际时长 分钟', log?.actual_duration_minutes, 'number')}</div>
-      <label>训练备注<textarea name="note">${log?.note || ''}</textarea></label>
-      <button>保存打卡</button>
-    </form>
+    <section class="card stack"><h2 class="title">今日打卡</h2><p class="muted">每个计划单独保存，适合中午有氧、晚上力量分开记录。</p></section>
+    ${plans.map((plan, index) => checkinForm(plan, logs[index])).join('')}
   </main>`);
 }
 
-function setEditor(exercise, saved) {
+function checkinForm(plan, log) {
+  return `<form class="card stack logForm" data-plan="${plan.id}" data-type="${plan.type}">
+    <div class="row"><h2 class="title">${plan.title}</h2><span class="pill">${typeMap[plan.type]}</span></div>
+    <div class="progress"><div class="bar logBar" style="width:${log?.completion_rate || 0}%"></div></div>
+    <div class="row"><span class="muted">完成率</span><b class="logRate">${log?.completion_rate || 0}%</b></div>
+    ${plan.exercises.map(e => setEditor(plan, e, log?.sets || [])).join('') || '<div class="empty">这个计划没有训练项目</div>'}
+    <div class="grid">${input('rpe','RPE 1-10', log?.rpe, 'number')}${input('actual_duration_minutes','总时长 分钟', log?.actual_duration_minutes, 'number')}</div>
+    <label>训练备注<textarea name="note">${log?.note || ''}</textarea></label>
+    <button>保存「${plan.title}」打卡</button>
+  </form>`;
+}
+
+function setEditor(plan, exercise, saved) {
+  if (plan.type === 'cardio') {
+    const s = saved.find(x => x.exercise_id === exercise.id && x.set_number === 1) || {};
+    return `<article class="item"><b>${exercise.name}</b><p class="tiny">目标 ${exercise.time_value ?? '--'} 分钟，${exercise.target_distance_km ?? '--'} km，${exercise.target_calories ?? '--'} kcal，强度 ${exercise.target_intensity ?? '--'}</p>
+      <div class="cardio-row set-row" data-exercise="${exercise.id}" data-set="1">
+        <input type="checkbox" name="completed" ${s.completed ? 'checked' : ''}>
+        <input name="actual_duration_minutes" type="number" placeholder="实际分钟" value="${s.actual_duration_seconds ? Math.round(s.actual_duration_seconds / 60) : exercise.time_value ?? ''}">
+        <input name="actual_distance_km" type="number" step="0.1" placeholder="实际km" value="${s.actual_distance_km ?? ''}">
+        <input name="actual_calories" type="number" placeholder="kcal" value="${s.actual_calories ?? ''}">
+      </div>
+    </article>`;
+  }
   const rows = [];
   for (let i = 1; i <= exercise.target_sets; i++) {
     const s = saved.find(x => x.exercise_id === exercise.id && x.set_number === i) || {};
@@ -267,7 +327,7 @@ async function render() {
     else if (state.route === '/health' || state.route.startsWith('/health/edit/')) app.innerHTML = await renderHealth(state.route.split('/').pop());
     else if (state.route === '/health-history' || state.route === '/history') app.innerHTML = await renderHistory();
     else if (state.route === '/goal') app.innerHTML = await renderGoal();
-    else if (state.route === '/plan') app.innerHTML = await renderPlan();
+    else if (state.route === '/plan' || state.route.startsWith('/plan/edit/')) app.innerHTML = await renderPlan();
     else if (state.route === '/checkin') app.innerHTML = await renderCheckin();
     else if (state.route === '/profile') app.innerHTML = await renderProfile();
     else app.innerHTML = await renderDashboard();
@@ -281,8 +341,12 @@ document.addEventListener('click', async (e) => {
   const route = e.target.closest('[data-route]')?.dataset.route;
   if (route) return setRoute(route);
   if (e.target.id === 'logout') { localStorage.removeItem('token'); state.token = null; state.user = null; return setRoute('/login'); }
-  if (e.target.id === 'addExercise') { $('#exerciseList').insertAdjacentHTML('beforeend', exerciseRow(blankExercise())); }
+  if (e.target.id === 'addExercise') { const type = $('#planType')?.value || 'strength'; $('#exerciseList').insertAdjacentHTML('beforeend', exerciseRow(blankExercise(type), type)); }
   if (e.target.classList.contains('removeExercise')) e.target.closest('.exercise').remove();
+  const editPlan = e.target.closest('[data-edit-plan]')?.dataset.editPlan;
+  if (editPlan) return setRoute(`/plan/edit/${editPlan}`);
+  const delPlan = e.target.closest('[data-del-plan]')?.dataset.delPlan;
+  if (delPlan && confirm('确定删除这个训练计划吗？')) { await api(`/api/workout-plans/${delPlan}`, { method: 'DELETE' }); toast('已删除'); render(); return; }
   const editHealth = e.target.closest('[data-edit-health]')?.dataset.editHealth;
   if (editHealth) setRoute(`/health/edit/${editHealth}`);
   const delHealth = e.target.closest('[data-del-health]')?.dataset.delHealth;
@@ -293,11 +357,18 @@ document.addEventListener('input', (e) => {
   if (e.target.closest('#healthForm')) {
     $('#bmiPreview').textContent = bmi($('[name=weight_kg]').value, $('[name=height_cm]').value) || '--';
   }
-  if (e.target.closest('#logForm')) updateLogRate();
+  if (e.target.closest('.logForm')) updateLogRate(e.target.closest('.logForm'));
 });
 
 document.addEventListener('change', (e) => {
-  if (e.target.closest('#logForm')) updateLogRate();
+  if (e.target.id === 'planType') {
+    const list = $('#exerciseList');
+    list.innerHTML = exerciseRowsForPlan(null, e.target.value);
+    const addButton = $('#addExercise');
+    if (addButton) addButton.style.display = activeTypes.includes(e.target.value) ? '' : 'none';
+    return;
+  }
+  if (e.target.closest('.logForm')) updateLogRate(e.target.closest('.logForm'));
 });
 
 document.addEventListener('submit', async (e) => {
@@ -328,15 +399,21 @@ document.addEventListener('submit', async (e) => {
       const id = form.dataset.id; const method = id ? 'PUT' : 'POST'; const path = id ? `/api/workout-plans/${id}` : '/api/workout-plans';
       await api(path, { method, body: JSON.stringify({ ...base, exercises }) }); toast('训练计划已保存'); render(); return;
     }
-    if (form.id === 'logForm') {
+    if (form.classList.contains('logForm')) {
       const base = formData(form);
-      const sets = [...form.querySelectorAll('.set-row')].map(row => ({
-        exercise_id: row.dataset.exercise,
-        set_number: row.dataset.set,
-        completed: $('[name=completed]', row).checked,
-        actual_reps: $('[name=actual_reps]', row).value || null,
-        actual_weight: $('[name=actual_weight]', row).value || null
-      }));
+      const sets = [...form.querySelectorAll('.set-row')].map(row => {
+        const actualMinutes = $('[name=actual_duration_minutes]', row)?.value;
+        return {
+          exercise_id: row.dataset.exercise,
+          set_number: row.dataset.set,
+          completed: $('[name=completed]', row).checked,
+          actual_reps: $('[name=actual_reps]', row)?.value || null,
+          actual_weight: $('[name=actual_weight]', row)?.value || null,
+          actual_duration_seconds: actualMinutes ? Math.round(Number(actualMinutes) * 60) : null,
+          actual_distance_km: $('[name=actual_distance_km]', row)?.value || null,
+          actual_calories: $('[name=actual_calories]', row)?.value || null
+        };
+      });
       await api('/api/workout-logs', { method: 'POST', body: JSON.stringify({ ...base, plan_id: form.dataset.plan, log_date: today(), sets }) });
       toast('训练打卡已保存'); render(); return;
     }
@@ -345,12 +422,14 @@ document.addEventListener('submit', async (e) => {
   }
 });
 
-function updateLogRate() {
-  const rows = [...document.querySelectorAll('.set-row')];
+function updateLogRate(form = document) {
+  const rows = [...form.querySelectorAll('.set-row')];
   const done = rows.filter(r => $('[name=completed]', r).checked).length;
   const rate = rows.length ? Math.round((done / rows.length) * 1000) / 10 : 0;
-  $('#logBar').style.width = `${rate}%`;
-  $('#logRate').textContent = `${rate}%`;
+  const bar = $('.logBar', form);
+  const label = $('.logRate', form);
+  if (bar) bar.style.width = `${rate}%`;
+  if (label) label.textContent = `${rate}%`;
 }
 
 window.addEventListener('hashchange', () => { state.route = location.hash.replace('#', '') || '/dashboard'; render(); });

@@ -129,6 +129,9 @@ const exerciseSchema = z.object({
   time_value: z.coerce.number().min(0).optional().nullable(),
   time_unit: z.enum(['seconds', 'minutes']).optional().nullable(),
   target_weight: optionalFreeText(60).nullable(),
+  target_distance_km: z.coerce.number().min(0).optional().nullable(),
+  target_calories: z.coerce.number().int().min(0).optional().nullable(),
+  target_intensity: optionalFreeText(40).nullable(),
   rest_seconds: z.coerce.number().int().min(0).optional().nullable(),
   note: z.string().max(300).optional().nullable(),
   sort_order: z.coerce.number().int().min(0).optional().default(0)
@@ -155,6 +158,8 @@ const logSchema = z.object({
     actual_reps: z.coerce.number().int().min(0).optional().nullable(),
     actual_weight: optionalFreeText(60).nullable(),
     actual_duration_seconds: z.coerce.number().int().min(0).optional().nullable(),
+    actual_distance_km: z.coerce.number().min(0).optional().nullable(),
+    actual_calories: z.coerce.number().int().min(0).optional().nullable(),
     note: z.string().max(200).optional().nullable()
   })).default([])
 });
@@ -223,10 +228,10 @@ function saveWorkoutLog(userId, payload, existingLogId = null) {
       log = db.prepare('SELECT * FROM workout_logs WHERE user_id = ? AND plan_id = ? AND log_date = ?').get(userId, v.plan_id, v.log_date);
     }
 
-    const upsertSet = db.prepare(`INSERT INTO exercise_set_logs (workout_log_id, exercise_id, set_number, completed, actual_reps, actual_weight, actual_duration_seconds, note, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(workout_log_id, exercise_id, set_number) DO UPDATE SET completed=excluded.completed, actual_reps=excluded.actual_reps, actual_weight=excluded.actual_weight, actual_duration_seconds=excluded.actual_duration_seconds, note=excluded.note, updated_at=excluded.updated_at`);
-    v.sets.forEach((setLog) => upsertSet.run(log.id, setLog.exercise_id, setLog.set_number, setLog.completed ? 1 : 0, setLog.actual_reps, setLog.actual_weight, setLog.actual_duration_seconds, setLog.note, nowSql()));
+    const upsertSet = db.prepare(`INSERT INTO exercise_set_logs (workout_log_id, exercise_id, set_number, completed, actual_reps, actual_weight, actual_duration_seconds, actual_distance_km, actual_calories, note, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workout_log_id, exercise_id, set_number) DO UPDATE SET completed=excluded.completed, actual_reps=excluded.actual_reps, actual_weight=excluded.actual_weight, actual_duration_seconds=excluded.actual_duration_seconds, actual_distance_km=excluded.actual_distance_km, actual_calories=excluded.actual_calories, note=excluded.note, updated_at=excluded.updated_at`);
+    v.sets.forEach((setLog) => upsertSet.run(log.id, setLog.exercise_id, setLog.set_number, setLog.completed ? 1 : 0, setLog.actual_reps, setLog.actual_weight, setLog.actual_duration_seconds, setLog.actual_distance_km, setLog.actual_calories, setLog.note, nowSql()));
     computeAndStoreLogRate(log.id);
     return log.id;
   })(payload);
@@ -331,21 +336,28 @@ app.get('/api/workout-plans', (req, res) => {
   ok(res, plans.map(attachExercises));
 });
 
+
 app.get('/api/workout-plans/date/:date', (req, res) => {
-  ok(res, attachExercises(db.prepare('SELECT * FROM workout_plans WHERE user_id = ? AND plan_date = ?').get(req.user.id, req.params.date)));
+  const plans = db.prepare('SELECT * FROM workout_plans WHERE user_id = ? AND plan_date = ? ORDER BY id ASC').all(req.user.id, req.params.date).map(attachExercises);
+  if (req.query.first === '1') return ok(res, plans[0] || null);
+  ok(res, plans);
+});
+
+app.get('/api/workout-plans/:id', (req, res) => {
+  const plan = getPlanByIdForUser(req.params.id, req.user.id);
+  if (!plan) return res.status(404).json({ message: '训练计划不存在' });
+  ok(res, attachExercises(plan));
 });
 
 app.post('/api/workout-plans', validate(planSchema), (req, res) => {
   const tx = db.transaction((v) => {
-    const existing = db.prepare('SELECT id FROM workout_plans WHERE user_id = ? AND plan_date = ?').get(req.user.id, v.plan_date);
-    if (existing) throw Object.assign(new Error('当天已有训练计划，请编辑现有计划'), { status: 409 });
     const result = db.prepare('INSERT INTO workout_plans (user_id, plan_date, title, type, note, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run(req.user.id, v.plan_date, v.title, v.type, v.note, nowSql());
     const planId = result.lastInsertRowid;
     const insertExercise = db.prepare(`INSERT INTO workout_exercises
-      (plan_id, name, target_sets, reps_per_set, time_value, time_unit, target_weight, rest_seconds, note, sort_order, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    v.exercises.forEach((e, index) => insertExercise.run(planId, e.name, e.target_sets, e.reps_per_set, e.time_value, e.time_unit, e.target_weight, e.rest_seconds, e.note, e.sort_order ?? index, nowSql()));
+      (plan_id, name, target_sets, reps_per_set, time_value, time_unit, target_weight, target_distance_km, target_calories, target_intensity, rest_seconds, note, sort_order, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    v.exercises.forEach((e, index) => insertExercise.run(planId, e.name, e.target_sets, e.reps_per_set, e.time_value, e.time_unit, e.target_weight, e.target_distance_km, e.target_calories, e.target_intensity, e.rest_seconds, e.note, e.sort_order ?? index, nowSql()));
     return planId;
   });
   const planId = tx(req.body);
@@ -359,9 +371,9 @@ app.put('/api/workout-plans/:id', validate(planSchema), (req, res) => {
       .run(v.plan_date, v.title, v.type, v.note, nowSql(), req.params.id, req.user.id);
     db.prepare('DELETE FROM workout_exercises WHERE plan_id = ?').run(req.params.id);
     const insertExercise = db.prepare(`INSERT INTO workout_exercises
-      (plan_id, name, target_sets, reps_per_set, time_value, time_unit, target_weight, rest_seconds, note, sort_order, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    v.exercises.forEach((e, index) => insertExercise.run(req.params.id, e.name, e.target_sets, e.reps_per_set, e.time_value, e.time_unit, e.target_weight, e.rest_seconds, e.note, e.sort_order ?? index, nowSql()));
+      (plan_id, name, target_sets, reps_per_set, time_value, time_unit, target_weight, target_distance_km, target_calories, target_intensity, rest_seconds, note, sort_order, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    v.exercises.forEach((e, index) => insertExercise.run(req.params.id, e.name, e.target_sets, e.reps_per_set, e.time_value, e.time_unit, e.target_weight, e.target_distance_km, e.target_calories, e.target_intensity, e.rest_seconds, e.note, e.sort_order ?? index, nowSql()));
   });
   tx(req.body);
   ok(res, attachExercises(getPlanByIdForUser(req.params.id, req.user.id)));
@@ -376,9 +388,9 @@ app.delete('/api/workout-plans/:id', (req, res) => {
 app.post('/api/workout-plans/:planId/exercises', validate(exerciseSchema), (req, res) => {
   ensurePlan(req, req.params.planId);
   const e = req.body;
-  const result = db.prepare(`INSERT INTO workout_exercises (plan_id, name, target_sets, reps_per_set, time_value, time_unit, target_weight, rest_seconds, note, sort_order, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(req.params.planId, e.name, e.target_sets, e.reps_per_set, e.time_value, e.time_unit, e.target_weight, e.rest_seconds, e.note, e.sort_order, nowSql());
+  const result = db.prepare(`INSERT INTO workout_exercises (plan_id, name, target_sets, reps_per_set, time_value, time_unit, target_weight, target_distance_km, target_calories, target_intensity, rest_seconds, note, sort_order, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(req.params.planId, e.name, e.target_sets, e.reps_per_set, e.time_value, e.time_unit, e.target_weight, e.target_distance_km, e.target_calories, e.target_intensity, e.rest_seconds, e.note, e.sort_order, nowSql());
   ok(res, db.prepare('SELECT * FROM workout_exercises WHERE id = ?').get(result.lastInsertRowid));
 });
 
@@ -386,8 +398,8 @@ app.put('/api/exercises/:id', validate(exerciseSchema), (req, res) => {
   const existing = db.prepare(`SELECT e.* FROM workout_exercises e JOIN workout_plans p ON p.id = e.plan_id WHERE e.id = ? AND p.user_id = ?`).get(req.params.id, req.user.id);
   if (!existing) return res.status(404).json({ message: '动作不存在' });
   const e = req.body;
-  db.prepare(`UPDATE workout_exercises SET name=?, target_sets=?, reps_per_set=?, time_value=?, time_unit=?, target_weight=?, rest_seconds=?, note=?, sort_order=?, updated_at=? WHERE id=?`)
-    .run(e.name, e.target_sets, e.reps_per_set, e.time_value, e.time_unit, e.target_weight, e.rest_seconds, e.note, e.sort_order, nowSql(), req.params.id);
+  db.prepare(`UPDATE workout_exercises SET name=?, target_sets=?, reps_per_set=?, time_value=?, time_unit=?, target_weight=?, target_distance_km=?, target_calories=?, target_intensity=?, rest_seconds=?, note=?, sort_order=?, updated_at=? WHERE id=?`)
+    .run(e.name, e.target_sets, e.reps_per_set, e.time_value, e.time_unit, e.target_weight, e.target_distance_km, e.target_calories, e.target_intensity, e.rest_seconds, e.note, e.sort_order, nowSql(), req.params.id);
   ok(res, db.prepare('SELECT * FROM workout_exercises WHERE id = ?').get(req.params.id));
 });
 
@@ -398,19 +410,26 @@ app.delete('/api/exercises/:id', (req, res) => {
   ok(res, { deleted: true });
 });
 
-function getLog(userId, date) {
-  const log = db.prepare('SELECT * FROM workout_logs WHERE user_id = ? AND log_date = ? ORDER BY id DESC LIMIT 1').get(userId, date);
+function getLog(userId, date, planId = null) {
+  const log = planId
+    ? db.prepare('SELECT * FROM workout_logs WHERE user_id = ? AND log_date = ? AND plan_id = ? ORDER BY id DESC LIMIT 1').get(userId, date, planId)
+    : db.prepare('SELECT * FROM workout_logs WHERE user_id = ? AND log_date = ? ORDER BY id DESC LIMIT 1').get(userId, date);
   if (!log) return null;
   const sets = db.prepare('SELECT * FROM exercise_set_logs WHERE workout_log_id = ? ORDER BY exercise_id, set_number').all(log.id);
   return { ...log, sets };
 }
 
-app.get('/api/workout-logs/date/:date', (req, res) => ok(res, getLog(req.user.id, req.params.date)));
+app.get('/api/workout-logs/date/:date', (req, res) => ok(res, getLog(req.user.id, req.params.date, req.query.plan_id || null)));
+
+app.get('/api/workout-logs/plan/:planId/date/:date', (req, res) => {
+  ensurePlan(req, req.params.planId);
+  ok(res, getLog(req.user.id, req.params.date, req.params.planId));
+});
 
 app.post('/api/workout-logs', validate(logSchema), (req, res) => {
   ensurePlan(req, req.body.plan_id);
   saveWorkoutLog(req.user.id, req.body);
-  ok(res, getLog(req.user.id, req.body.log_date));
+  ok(res, getLog(req.user.id, req.body.log_date, req.body.plan_id));
 });
 
 app.put('/api/workout-logs/:id', validate(logSchema), (req, res) => {
@@ -418,21 +437,29 @@ app.put('/api/workout-logs/:id', validate(logSchema), (req, res) => {
   if (!existing) return res.status(404).json({ message: '训练日志不存在' });
   req.body.plan_id = existing.plan_id;
   saveWorkoutLog(req.user.id, req.body, existing.id);
-  ok(res, getLog(req.user.id, req.body.log_date));
+  ok(res, getLog(req.user.id, req.body.log_date, existing.plan_id));
 });
 
 app.get('/api/dashboard', (req, res) => {
   const today = localDate();
   const latestHealth = getLatestHealth(req.user.id);
   const latestGoal = getLatestGoal(req.user.id);
-  const todayPlan = attachExercises(db.prepare('SELECT * FROM workout_plans WHERE user_id = ? AND plan_date = ?').get(req.user.id, today));
-  const todayLog = getLog(req.user.id, today);
-  const recentTraining = db.prepare(`SELECT log_date, completion_rate FROM workout_logs WHERE user_id = ? ORDER BY log_date DESC LIMIT 7`).all(req.user.id).reverse();
+  const todayPlans = db.prepare('SELECT * FROM workout_plans WHERE user_id = ? AND plan_date = ? ORDER BY id ASC').all(req.user.id, today).map(attachExercises);
+  const todayLogs = db.prepare('SELECT * FROM workout_logs WHERE user_id = ? AND log_date = ? ORDER BY id ASC').all(req.user.id, today);
+  const logsByPlan = new Map(todayLogs.map((log) => [Number(log.plan_id), log]));
+  const avgRate = todayPlans.length
+    ? Math.round((todayPlans.reduce((sum, plan) => sum + Number(logsByPlan.get(Number(plan.id))?.completion_rate || 0), 0) / todayPlans.length) * 10) / 10
+    : 0;
+  const todayPlan = todayPlans[0] || null;
+  const todayLog = todayLogs[0] || null;
+  const recentTraining = db.prepare(`SELECT log_date, AVG(completion_rate) AS completion_rate FROM workout_logs WHERE user_id = ? GROUP BY log_date ORDER BY log_date DESC LIMIT 7`).all(req.user.id).reverse();
   ok(res, {
     today,
     today_plan: todayPlan,
+    today_plans: todayPlans,
     today_log: todayLog,
-    today_completion_rate: todayLog?.completion_rate ?? 0,
+    today_logs: todayLogs,
+    today_completion_rate: avgRate,
     latest_health: latestHealth ? { ...latestHealth, bmi_category: bmiCategory(latestHealth.bmi) } : null,
     latest_goal: latestGoal ? { ...latestGoal, summary: goalSummary(latestGoal, latestHealth) } : null,
     recent_training: recentTraining

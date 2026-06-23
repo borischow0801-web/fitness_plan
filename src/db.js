@@ -71,7 +71,6 @@ CREATE TABLE IF NOT EXISTS workout_plans (
   note TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(user_id, plan_date),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -83,7 +82,10 @@ CREATE TABLE IF NOT EXISTS workout_exercises (
   reps_per_set INTEGER,
   time_value REAL,
   time_unit TEXT CHECK(time_unit IN ('seconds','minutes')),
-  target_weight REAL,
+  target_weight TEXT,
+  target_distance_km REAL,
+  target_calories INTEGER,
+  target_intensity TEXT,
   rest_seconds INTEGER,
   note TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
@@ -115,8 +117,10 @@ CREATE TABLE IF NOT EXISTS exercise_set_logs (
   set_number INTEGER NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
   actual_reps INTEGER,
-  actual_weight REAL,
+  actual_weight TEXT,
   actual_duration_seconds INTEGER,
+  actual_distance_km REAL,
+  actual_calories INTEGER,
   note TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -130,8 +134,60 @@ CREATE INDEX IF NOT EXISTS idx_plans_user_date ON workout_plans(user_id, plan_da
 CREATE INDEX IF NOT EXISTS idx_logs_user_date ON workout_logs(user_id, log_date DESC);
 `;
 
+function columnNames(tableName) {
+  return db.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => column.name);
+}
+
+function addColumnIfMissing(tableName, columnName, definition) {
+  if (!columnNames(tableName).includes(columnName)) {
+    db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
+  }
+}
+
+function migrateWorkoutPlansAllowMultiplePerDay() {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'workout_plans'").get();
+  if (!row?.sql?.includes('UNIQUE(user_id, plan_date)')) return;
+
+  db.exec('PRAGMA foreign_keys = OFF');
+  const migrate = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE workout_plans_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        plan_date TEXT NOT NULL,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('strength','cardio','core','recovery','rest')),
+        note TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      INSERT INTO workout_plans_new (id, user_id, plan_date, title, type, note, created_at, updated_at)
+      SELECT id, user_id, plan_date, title, type, note, created_at, updated_at FROM workout_plans;
+      DROP TABLE workout_plans;
+      ALTER TABLE workout_plans_new RENAME TO workout_plans;
+    `);
+  });
+  try {
+    migrate();
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
 export function initDb() {
   db.exec(schemaSql);
+  migrateWorkoutPlansAllowMultiplePerDay();
+  addColumnIfMissing('workout_exercises', 'target_distance_km', 'REAL');
+  addColumnIfMissing('workout_exercises', 'target_calories', 'INTEGER');
+  addColumnIfMissing('workout_exercises', 'target_intensity', 'TEXT');
+  addColumnIfMissing('exercise_set_logs', 'actual_distance_km', 'REAL');
+  addColumnIfMissing('exercise_set_logs', 'actual_calories', 'INTEGER');
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_health_user_date ON health_records(user_id, record_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_plans_user_date ON workout_plans(user_id, plan_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_logs_user_date ON workout_logs(user_id, log_date DESC);
+  `);
 }
 
 export function nowSql() {

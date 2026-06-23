@@ -26,7 +26,7 @@ body::-webkit-scrollbar,
 *::-webkit-scrollbar {
   display: none;
 }
-button, input, select, textarea { font: inherit; }
+button, input, select, textarea { font: inherit; font-size: 16px; }
 button { min-height: 44px; border: 0; border-radius: 8px; padding: 0 14px; background: var(--primary); color: #fff; font-weight: 700; }
 button.secondary { background: #edf2ea; color: var(--text); }
 button.danger { background: #fff1e8; color: var(--danger); }
@@ -53,6 +53,10 @@ label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
 .auth { min-height: 100vh; display: grid; align-content: center; gap: 14px; padding: 22px; }
 .auth h1 { margin: 0; font-size: 26px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.plan-head { display: grid; grid-template-columns: minmax(116px, 34%) minmax(0, 1fr); gap: 10px; align-items: end; }
+.compact { box-shadow: none; }
+.cardio-row { grid-template-columns: 34px repeat(3, minmax(0, 1fr)); }
+
 .stack { display: grid; gap: 10px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -80,6 +84,9 @@ label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
 .chart span { display: block; min-height: 8px; border-radius: 6px 6px 2px 2px; background: var(--blue); }
 @media (max-width: 420px) {
   .grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .plan-head { grid-template-columns: 118px minmax(0, 1fr); gap: 8px; }
   .card { padding: 12px; }
   .set-row { grid-template-columns: 30px 1fr 1fr; }
+  .cardio-row { grid-template-columns: 30px 1fr 1fr; }
+  .cardio-row input[name=actual_calories] { grid-column: 2 / 4; }
 }
