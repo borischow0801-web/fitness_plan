@@ -282,9 +282,9 @@ function setEditor(plan, exercise, saved) {
     return `<article class="item"><b>${exercise.name}</b><p class="tiny">目标 ${exercise.time_value ?? '--'} 分钟，${exercise.target_distance_km ?? '--'} km，${exercise.target_calories ?? '--'} kcal，强度 ${exercise.target_intensity ?? '--'}</p>
       <div class="cardio-row set-row" data-exercise="${exercise.id}" data-set="1">
         <input type="checkbox" name="completed" ${s.completed ? 'checked' : ''}>
-        <input name="actual_duration_minutes" type="number" placeholder="实际分钟" value="${s.actual_duration_seconds ? Math.round(s.actual_duration_seconds / 60) : exercise.time_value ?? ''}">
-        <input name="actual_distance_km" type="number" step="0.1" placeholder="实际km" value="${s.actual_distance_km ?? ''}">
-        <input name="actual_calories" type="number" placeholder="kcal" value="${s.actual_calories ?? ''}">
+        <label class="mini-field">分钟<input name="actual_duration_minutes" type="number" placeholder="分钟" value="${s.actual_duration_seconds ? Math.round(s.actual_duration_seconds / 60) : exercise.time_value ?? ''}"></label>
+        <label class="mini-field">距离 km<input name="actual_distance_km" type="number" step="0.1" placeholder="km" value="${s.actual_distance_km ?? ''}"></label>
+        <label class="mini-field">热量 kcal<input name="actual_calories" type="number" placeholder="kcal" value="${s.actual_calories ?? ''}"></label>
       </div>
     </article>`;
   }
@@ -293,8 +293,8 @@ function setEditor(plan, exercise, saved) {
     const s = saved.find(x => x.exercise_id === exercise.id && x.set_number === i) || {};
     rows.push(`<div class="set-row" data-exercise="${exercise.id}" data-set="${i}">
       <input type="checkbox" name="completed" ${s.completed ? 'checked' : ''}>
-      <input name="actual_reps" type="number" placeholder="实际次数" value="${s.actual_reps ?? exercise.reps_per_set ?? ''}">
-      <input name="actual_weight" type="text" placeholder="实际重量" value="${s.actual_weight ?? exercise.target_weight ?? ''}">
+      <label class="mini-field">次数<input name="actual_reps" type="number" placeholder="次数" value="${s.actual_reps ?? exercise.reps_per_set ?? ''}"></label>
+      <label class="mini-field">重量<input name="actual_weight" type="text" placeholder="重量" value="${s.actual_weight ?? exercise.target_weight ?? ''}"></label>
     </div>`);
   }
   return `<article class="item"><b>${exercise.name}</b><p class="tiny">${exercise.target_sets} 组 × ${exercise.reps_per_set ?? '--'} 次，休息 ${exercise.rest_seconds ?? '--'} 秒</p>${rows.join('')}</article>`;

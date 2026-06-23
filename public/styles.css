@@ -53,9 +53,9 @@ label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
 .auth { min-height: 100vh; display: grid; align-content: center; gap: 14px; padding: 22px; }
 .auth h1 { margin: 0; font-size: 26px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.plan-head { display: grid; grid-template-columns: minmax(116px, 34%) minmax(0, 1fr); gap: 10px; align-items: end; }
+.plan-head { display: grid; grid-template-columns: minmax(0, 42fr) minmax(0, 58fr); gap: 10px; align-items: end; }
 .compact { box-shadow: none; }
-.cardio-row { grid-template-columns: 34px repeat(3, minmax(0, 1fr)); }
+.cardio-row { grid-template-columns: 34px repeat(3, minmax(0, 1fr)); align-items: end; }
 
 .stack { display: grid; gap: 10px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -72,8 +72,11 @@ label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
 .pill { display: inline-flex; align-items: center; min-height: 28px; padding: 0 9px; border-radius: 999px; background: #edf2ea; color: var(--muted); font-size: 12px; font-weight: 700; }
 .list { display: grid; gap: 10px; }
 .item { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
-.set-row { display: grid; grid-template-columns: 34px 1fr 1fr; gap: 8px; align-items: center; margin-top: 8px; }
-.set-row input[type="checkbox"] { width: 24px; min-height: 24px; }
+.set-row { display: grid; grid-template-columns: 34px 1fr 1fr; gap: 8px; align-items: end; margin-top: 8px; }
+.set-row input[type="checkbox"] { width: 24px; min-height: 24px; align-self: center; }
+.mini-field { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 12px; }
+.mini-field input { min-width: 0; }
+
 .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.95); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
 .nav-btn { min-height: 52px; border-radius: 8px; background: transparent; color: var(--muted); padding: 4px 2px; font-size: 12px; font-weight: 700; }
 .nav-btn.active { background: #e6f2ed; color: var(--primary-dark); }
@@ -84,9 +87,9 @@ label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
 .chart span { display: block; min-height: 8px; border-radius: 6px 6px 2px 2px; background: var(--blue); }
 @media (max-width: 420px) {
   .grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .plan-head { grid-template-columns: 118px minmax(0, 1fr); gap: 8px; }
+  .plan-head { grid-template-columns: minmax(0, 42fr) minmax(0, 58fr); gap: 8px; }
   .card { padding: 12px; }
   .set-row { grid-template-columns: 30px 1fr 1fr; }
   .cardio-row { grid-template-columns: 30px 1fr 1fr; }
-  .cardio-row input[name=actual_calories] { grid-column: 2 / 4; }
+  .cardio-row .mini-field:last-child { grid-column: 2 / 4; }
 }
