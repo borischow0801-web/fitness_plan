@@ -55,8 +55,12 @@ label { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 1
 .auth h1 { margin: 0; font-size: 26px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .plan-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; }
-.plan-head > label { min-width: 0; overflow: hidden; }
-input[name="plan_date"] { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.plan-head > label, .plan-head > .date-field { min-width: 0; overflow: hidden; }
+.date-field { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+.date-field-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 6px; }
+.date-field-row input[name="plan_date"] { font-variant-numeric: tabular-nums; letter-spacing: 0; cursor: pointer; }
+.date-pick-btn { min-height: 44px; padding: 0 8px; white-space: nowrap; }
+.date-picker-proxy { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; min-height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 .compact { box-shadow: none; }
 .cardio-row { grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
 .cardio-row .mini-field:last-child { grid-column: 2 / 4; }

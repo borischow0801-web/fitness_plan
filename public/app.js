@@ -151,7 +151,24 @@ function input(name, label, value = '', type = 'text') {
 }
 
 function dateTextInput(name, label, value = '') {
-  return `<label>${label}<input name="${name}" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" placeholder="YYYY-MM-DD" value="${value ?? ''}" required></label>`;
+  return `<div class="date-field">
+    <span>${label}</span>
+    <div class="date-field-row">
+      <input name="${name}" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" placeholder="YYYY-MM-DD" value="${value ?? ''}" readonly required data-open-date>
+      <button type="button" class="secondary date-pick-btn" data-open-date>选择</button>
+      <input class="date-picker-proxy" type="date" value="${value ?? ''}" aria-hidden="true" tabindex="-1">
+    </div>
+  </div>`;
+}
+
+function openDatePicker(target) {
+  const root = target.closest('.date-field');
+  const proxy = $('.date-picker-proxy', root);
+  const display = $('input[name=plan_date]', root);
+  if (!proxy || !display) return;
+  proxy.value = display.value || today();
+  if (typeof proxy.showPicker === 'function') proxy.showPicker();
+  else proxy.click();
 }
 
 function opts(map, selected) {
@@ -342,6 +359,7 @@ async function render() {
 }
 
 document.addEventListener('click', async (e) => {
+  if (e.target.closest('[data-open-date]')) { openDatePicker(e.target); return; }
   const route = e.target.closest('[data-route]')?.dataset.route;
   if (route) return setRoute(route);
   if (e.target.id === 'logout') { localStorage.removeItem('token'); state.token = null; state.user = null; return setRoute('/login'); }
@@ -365,6 +383,12 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.classList.contains('date-picker-proxy')) {
+    const root = e.target.closest('.date-field');
+    const display = $('input[name=plan_date]', root);
+    if (display && e.target.value) display.value = e.target.value;
+    return;
+  }
   if (e.target.id === 'planType') {
     const list = $('#exerciseList');
     list.innerHTML = exerciseRowsForPlan(null, e.target.value);
