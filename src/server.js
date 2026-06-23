@@ -89,6 +89,11 @@ const loginSchema = z.object({
   password: z.string().min(1, '请输入密码')
 });
 
+const optionalFreeText = (max = 60) => z.preprocess(
+  (value) => (value === '' || value === null ? undefined : String(value).trim()),
+  z.string().max(max).optional()
+);
+
 const healthSchema = z.object({
   height_cm: z.coerce.number().positive('身高必须大于 0'),
   weight_kg: z.coerce.number().positive('体重必须大于 0'),
@@ -123,7 +128,7 @@ const exerciseSchema = z.object({
   reps_per_set: z.coerce.number().int().min(0).max(1000).optional().nullable(),
   time_value: z.coerce.number().min(0).optional().nullable(),
   time_unit: z.enum(['seconds', 'minutes']).optional().nullable(),
-  target_weight: z.coerce.number().min(0).optional().nullable(),
+  target_weight: optionalFreeText(60).nullable(),
   rest_seconds: z.coerce.number().int().min(0).optional().nullable(),
   note: z.string().max(300).optional().nullable(),
   sort_order: z.coerce.number().int().min(0).optional().default(0)
@@ -148,7 +153,7 @@ const logSchema = z.object({
     set_number: z.coerce.number().int().positive(),
     completed: z.boolean().or(z.coerce.number().int().min(0).max(1)).default(false),
     actual_reps: z.coerce.number().int().min(0).optional().nullable(),
-    actual_weight: z.coerce.number().min(0).optional().nullable(),
+    actual_weight: optionalFreeText(60).nullable(),
     actual_duration_seconds: z.coerce.number().int().min(0).optional().nullable(),
     note: z.string().max(200).optional().nullable()
   })).default([])

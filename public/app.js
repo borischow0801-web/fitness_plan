@@ -202,7 +202,7 @@ function exerciseRow(e = {}) {
     <div class="row"><b>动作</b><button type="button" class="danger removeExercise">删除</button></div>
     <div class="grid">
       ${input('name','动作名称', e.name, 'text')}${input('target_sets','目标组数', e.target_sets, 'number')}
-      ${input('reps_per_set','每组次数', e.reps_per_set, 'number')}${input('target_weight','目标重量', e.target_weight, 'number')}
+      ${input('reps_per_set','每组次数', e.reps_per_set, 'number')}${input('target_weight','目标重量', e.target_weight, 'text')}
       ${input('time_value','每组时间', e.time_value, 'number')}<label>时间单位<select name="time_unit">${opts({ seconds:'秒', minutes:'分钟' }, e.time_unit || 'seconds')}</select></label>
       ${input('rest_seconds','休息秒数', e.rest_seconds, 'number')}${input('sort_order','排序', e.sort_order ?? 0, 'number')}
     </div>
@@ -234,7 +234,7 @@ function setEditor(exercise, saved) {
     rows.push(`<div class="set-row" data-exercise="${exercise.id}" data-set="${i}">
       <input type="checkbox" name="completed" ${s.completed ? 'checked' : ''}>
       <input name="actual_reps" type="number" placeholder="实际次数" value="${s.actual_reps ?? exercise.reps_per_set ?? ''}">
-      <input name="actual_weight" type="number" step="0.1" placeholder="实际重量" value="${s.actual_weight ?? exercise.target_weight ?? ''}">
+      <input name="actual_weight" type="text" placeholder="实际重量" value="${s.actual_weight ?? exercise.target_weight ?? ''}">
     </div>`);
   }
   return `<article class="item"><b>${exercise.name}</b><p class="tiny">${exercise.target_sets} 组 × ${exercise.reps_per_set ?? '--'} 次，休息 ${exercise.rest_seconds ?? '--'} 秒</p>${rows.join('')}</article>`;
