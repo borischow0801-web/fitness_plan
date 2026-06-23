@@ -150,6 +150,10 @@ function input(name, label, value = '', type = 'text') {
   return `<label>${label}<input name="${name}" type="${type}" value="${value ?? ''}" ${['height_cm','weight_kg','record_date'].includes(name) ? 'required' : ''} step="0.1"></label>`;
 }
 
+function dateTextInput(name, label, value = '') {
+  return `<label>${label}<input name="${name}" type="text" inputmode="numeric" autocomplete="off" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" placeholder="YYYY-MM-DD" value="${value ?? ''}" required></label>`;
+}
+
 function opts(map, selected) {
   return Object.entries(map).map(([k, v]) => `<option value="${k}" ${selected === k ? 'selected' : ''}>${v}</option>`).join('');
 }
@@ -197,7 +201,7 @@ async function renderPlan() {
     </section>
     <form class="card stack" id="planForm" data-id="${edit?.id || ''}">
       <h2 class="title">${edit ? '编辑计划' : '新增计划'}</h2>
-      <div class="plan-head">${input('plan_date','日期', edit?.plan_date || today(), 'date')}${input('title','训练标题', edit?.title || '', 'text')}</div>
+      <div class="plan-head">${dateTextInput('plan_date','日期', edit?.plan_date || today())}${input('title','训练标题', edit?.title || '', 'text')}</div>
       <label>训练类型<select name="type" id="planType">${opts(typeMap, formType)}</select></label>
       <label>备注<textarea name="note">${edit?.note || ''}</textarea></label>
       <h3 class="section-title">训练项目</h3>
