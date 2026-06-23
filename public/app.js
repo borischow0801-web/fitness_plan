@@ -40,6 +40,14 @@ function formData(form) {
   return data;
 }
 
+function fieldsData(root) {
+  const data = {};
+  root.querySelectorAll('input[name], select[name], textarea[name]').forEach((field) => {
+    data[field.name] = field.value === '' ? null : field.value;
+  });
+  return data;
+}
+
 function num(v) {
   if (v === null || v === undefined || v === '') return '';
   return Number(v);
@@ -316,7 +324,7 @@ document.addEventListener('submit', async (e) => {
         type: form.querySelector('select[name=type]').value,
         note: form.querySelector(':scope > label textarea[name=note]')?.value || null
       };
-      const exercises = [...form.querySelectorAll('.exercise')].map((el, i) => ({ ...Object.fromEntries(new FormData(el).entries()), sort_order: i })).filter(x => x.name);
+      const exercises = [...form.querySelectorAll('.exercise')].map((el, i) => ({ ...fieldsData(el), sort_order: i })).filter(x => x.name);
       const id = form.dataset.id; const method = id ? 'PUT' : 'POST'; const path = id ? `/api/workout-plans/${id}` : '/api/workout-plans';
       await api(path, { method, body: JSON.stringify({ ...base, exercises }) }); toast('训练计划已保存'); render(); return;
     }
